@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Расход</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --bg2: var(--tg-theme-secondary-bg-color, #f2f3f5);
+    --text: var(--tg-theme-text-color, #111111);
+    --hint: var(--tg-theme-hint-color, #8a8f98);
+    --accent: var(--tg-theme-button-color, #2e6b4f);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --danger: var(--tg-theme-destructive-text-color, #d93a3a);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg2); color: var(--text);
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 110px; }
+  h1 { font-size: 20px; margin: 4px 4px 14px; }
+
+  /* вкладки */
+  .tabs { display: flex; background: var(--bg); border-radius: 12px; padding: 4px; gap: 4px; margin-bottom: 14px; }
+  .tabs button { flex: 1; border: 0; background: transparent; color: var(--hint); border-radius: 9px; padding: 9px;
+    font: 600 15px inherit; font-family: inherit; }
+  .tabs button.on { background: var(--accent); color: var(--accent-text); }
+
+  /* аналитика */
+  .month { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 12px; }
+  .month button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: var(--bg); color: var(--text);
+    font-size: 24px; line-height: 1; }
+  .month button:disabled { opacity: .3; }
+  .mTitle { position: relative; font-size: 18px; font-weight: 700; padding: 8px 14px; border-radius: 10px; }
+  .mTitle::after { content: ' ▾'; color: var(--hint); font-size: 13px; }
+  .mTitle input { position: absolute; inset: 0; opacity: 0; width: 100%; }
+  .hero .num { font-size: 34px; font-weight: 800; letter-spacing: -.01em; }
+  .hero .num small { font-size: 18px; color: var(--hint); font-weight: 600; }
+  .hero .sub { color: var(--hint); font-size: 14px; margin-top: 2px; }
+  .stack { display: flex; gap: 2px; height: 10px; }
+  .stack i { display: block; min-width: 3px; }
+  .stack i:first-child { border-radius: 4px 0 0 4px; }
+  .stack i:last-child { border-radius: 0 4px 4px 0; }
+  .stack i:only-child { border-radius: 4px; }
+  .whoRow { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 15px; }
+  .whoRow .dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .whoRow .v { margin-left: auto; font-weight: 700; }
+  .whoRow .pct { color: var(--hint); width: 42px; text-align: right; font-size: 14px; }
+  .cat { padding: 12px 0; border-top: 1px solid var(--bg2); cursor: pointer; }
+  .cat:first-of-type { border-top: 0; padding-top: 2px; }
+  .catHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+  .catHead .n { font-weight: 600; }
+  .catHead .v { margin-left: auto; font-weight: 700; white-space: nowrap; }
+  .catHead .pct { color: var(--hint); font-size: 13px; width: 38px; text-align: right; }
+  .catWho { color: var(--hint); font-size: 13px; margin-top: 6px; }
+  .catWho b { color: var(--text); font-weight: 600; }
+  .entries { margin-top: 8px; background: var(--bg2); border-radius: 10px; padding: 4px 10px; }
+  .entry { display: flex; gap: 8px; padding: 7px 0; font-size: 14px; border-top: 1px solid var(--bg); }
+  .entry:first-child { border-top: 0; }
+  .entry .d { color: var(--hint); width: 40px; flex: none; }
+  .entry .t { flex: 1; min-width: 0; }
+  .entry .t small { display: block; color: var(--hint); font-size: 12px; }
+  .entry .a { font-weight: 600; white-space: nowrap; }
+  .empty { text-align: center; color: var(--hint); padding: 40px 10px; }
+
+  .card { background: var(--bg); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+  .label { font-size: 13px; color: var(--hint); margin: 0 0 8px 2px; text-transform: uppercase; letter-spacing: .03em; }
+
+  .amount { display: flex; align-items: baseline; gap: 8px; }
+  .amount input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text);
+    font-size: 40px; font-weight: 700; padding: 0; }
+  .amount span { color: var(--hint); font-size: 20px; }
+
+  input.field, textarea.field { width: 100%; border: 0; outline: 0; background: var(--bg2); color: var(--text);
+    border-radius: 10px; padding: 12px; font: inherit; }
+  textarea.field { resize: none; min-height: 64px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 0; border-radius: 999px; padding: 8px 13px; font: 600 14px/1.1 inherit; font-family: inherit;
+    cursor: pointer; transition: transform .1s, opacity .15s, box-shadow .15s; }
+  .chips.has-sel .chip:not(.sel) { opacity: .45; }
+  .chip.sel { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); transform: scale(1.04); opacity: 1; }
+
+  .suggest { display: flex; gap: 6px; overflow-x: auto; margin-top: 8px; scrollbar-width: none; }
+  .suggest::-webkit-scrollbar { display: none; }
+  .suggest button { flex: none; border: 1px solid var(--bg2); background: var(--bg2); color: var(--text);
+    border-radius: 999px; padding: 6px 11px; font: 13px inherit; font-family: inherit; }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row2 .card { margin: 0 0 12px; }
+
+  #saveBtn { width: 100%; border: 0; border-radius: 12px; padding: 15px; background: var(--accent); color: var(--accent-text);
+    font: 600 16px inherit; font-family: inherit; }
+  #saveBtn:disabled { opacity: .6; }
+
+  .screen { text-align: center; color: var(--hint); padding: 60px 20px; }
+  .screen b { color: var(--text); display: block; margin-bottom: 8px; font-size: 18px; }
+  .screen code { background: var(--bg); padding: 2px 6px; border-radius: 6px; color: var(--text); user-select: all; }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 40px); opacity: 0;
+    background: #1f7a4d; color: #fff; padding: 11px 18px; border-radius: 999px; font-weight: 600;
+    transition: .25s; pointer-events: none; white-space: nowrap; }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; }
+  .err { color: var(--danger); font-size: 14px; margin-top: 6px; min-height: 1em; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div id="loading" class="screen">Загрузка…</div>
+  <div id="denied" class="screen" hidden></div>
+
+  <nav id="tabs" class="tabs" hidden>
+    <button type="button" data-tab="add" class="on">➕ Расход</button>
+    <button type="button" data-tab="stats">📊 Аналитика</button>
+  </nav>
+
+  <section id="stats" hidden>
+    <div class="month">
+      <button id="mPrev" type="button" aria-label="Предыдущий месяц">‹</button>
+      <label class="mTitle"><span id="mLabel"></span><input id="mPick" type="month"></label>
+      <button id="mNext" type="button" aria-label="Следующий месяц">›</button>
+    </div>
+    <div id="statsBody"></div>
+  </section>
+
+  <form id="form" hidden autocomplete="off">
+    <h1>Новый расход</h1>
+
+    <div class="card">
+      <div class="label">Сумма</div>
+      <div class="amount"><input id="amount" inputmode="decimal" placeholder="0"><span>BYN</span></div>
+    </div>
+
+    <div class="card">
+      <div class="label">Название</div>
+      <input id="name" class="field" placeholder="Например, Продукты" enterkeyhint="done">
+      <div id="suggest" class="suggest"></div>
+    </div>
+
+    <div class="card">
+      <div class="label">Категория</div>
+      <div id="cats" class="chips"></div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="label">Кто</div>
+        <div id="people" class="chips"></div>
+      </div>
+      <div class="card">
+        <div class="label">Дата</div>
+        <input id="date" type="date" class="field">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">Комментарий</div>
+      <textarea id="comment" class="field" placeholder="Необязательно"></textarea>
+    </div>
+
+    <div id="error" class="err"></div>
+    <button id="saveBtn" type="submit">Сохранить</button>
+  </form>
+</main>
+<div id="toast" class="toast"></div>
+
+<script>
+  // ⬇️ Вставьте сюда URL веб-приложения Apps Script (заканчивается на /exec)
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxOMH62ghiaAV1VOrxFkaB1sBNYtzReBXLt8I9DiaGMYGz0tVTUUnNsRnF-SMWjKAfW/exec';
+
+  const CAT_COLORS = {
+    'Еда':              ['#d4edbc', '#11734b'],
+    'Бензин/транспорт': ['#753800', '#ffcfc9'],
+    'Машина':           ['#b10202', '#ffcfc9'],
+    'Бытовые покупки':  ['#ffe5a0', '#473822'],
+    'Кредиты':          ['#5a3286', '#e6cff2'],
+    'ЖКХ':              ['#215a6c', '#c6dbe1'],
+    'Одежда':           ['#c6dbe1', '#215a6c'],
+    'Здоровье':         ['#0a53a8', '#bfe1f6'],
+    'Кафе/кофейни':     ['#e8eaed', '#3c4043'],
+    'Развлечения':      ['#ffcfc9', '#b10202'],
+    'Косметика':        ['#e8eaed', '#3c4043'],
+    'Десятина':         ['#bfe1f6', '#0a53a8'],
+    'Конверты':         ['#11734b', '#d4edbc'],
+    'Прочие':           ['#e6cff2', '#5a3286'],
+    'Подарки':          ['#3ee8b0', '#0b4d3a'],
+  };
+  const PEOPLE_COLORS = { 'Тима': ['#bfe1f6', '#0a53a8'], 'Ульяна': ['#e6cff2', '#5a3286'] };
+  const FALLBACK = ['#e8eaed', '#3c4043'];
+
+  const tg = window.Telegram && Telegram.WebApp;
+  const inTelegram = !!(tg && tg.initData);
+  const $ = (id) => document.getElementById(id);
+
+  const state = { category: '', who: '', catTouched: false, saving: false, suggestions: [] };
+
+  function haptic(type) { try { tg.HapticFeedback.notificationOccurred(type); } catch (e) {} }
+  function tap() { try { tg.HapticFeedback.selectionChanged(); } catch (e) {} }
+  function alertMsg(msg) { if (inTelegram && tg.showAlert) tg.showAlert(msg); else alert(msg); }
+
+  async function api(action, payload) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      // text/plain — чтобы браузер не делал CORS preflight (Apps Script его не поддерживает)
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action, initData: tg ? tg.initData : '' }, payload || {})),
+    });
+    return res.json();
+  }
+
+  function todayISO() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  function renderChips(el, items, colors, selected, onPick) {
+    el.innerHTML = '';
+    el.classList.toggle('has-sel', !!selected);
+    items.forEach((item) => {
+      const [bg, fg] = colors[item] || FALLBACK;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (item === selected ? ' sel' : '');
+      b.textContent = item;
+      b.style.background = bg;
+      b.style.color = fg;
+      b.onclick = () => { tap(); onPick(item); };
+      el.appendChild(b);
+    });
+  }
+
+  let categories = [], people = [];
+  function renderCats() {
+    renderChips($('cats'), categories, CAT_COLORS, state.category, (c) => {
+      state.category = state.category === c ? '' : c;
+      state.catTouched = !!state.category;
+      renderCats();
+    });
+  }
+  function renderPeople() {
+    renderChips($('people'), people, PEOPLE_COLORS, state.who, (p) => { state.who = p; renderPeople(); });
+  }
+
+  function renderSuggest() {
+    const q = $('name').value.trim().toLowerCase();
+    const list = state.suggestions
+      .filter((s) => !q || (s.name.toLowerCase().includes(q) && s.name.toLowerCase() !== q))
+      .slice(0, 12);
+    const box = $('suggest');
+    box.innerHTML = '';
+    list.forEach((s) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = s.name;
+      b.onclick = () => { tap(); $('name').value = s.name; onNameChange(); };
+      box.appendChild(b);
+    });
+  }
+
+  function onNameChange() {
+    const q = $('name').value.trim().toLowerCase();
+    const hit = state.suggestions.find((s) => s.name.toLowerCase() === q);
+    if (hit && hit.category && !state.catTouched && categories.includes(hit.category)) {
+      state.category = hit.category;
+      renderCats();
+    }
+    renderSuggest();
+  }
+
+  function setSaving(on) {
+    state.saving = on;
+    $('saveBtn').disabled = on;
+    if (inTelegram) on ? tg.MainButton.showProgress(false) : tg.MainButton.hideProgress();
+  }
+
+  async function save() {
+    if (state.saving) return;
+    $('error').textContent = '';
+    const amount = $('amount').value.replace(/\s/g, '').replace(',', '.');
+    const name = $('name').value.trim();
+    let problem = '';
+    if (!(Number(amount) > 0)) problem = 'Введите сумму';
+    else if (!name) problem = 'Введите название';
+    else if (!state.category) problem = 'Выберите категорию';
+    if (problem) { $('error').textContent = problem; haptic('error'); return; }
+
+    setSaving(true);
+    try {
+      const r = await api('add', {
+        expense: {
+          amount, name, category: state.category, who: state.who,
+          date: $('date').value, comment: $('comment').value.trim(),
+        },
+      });
+      if (!r.ok) throw new Error(r.message || r.error || 'Ошибка сохранения');
+      haptic('success');
+      showToast(`Сохранено: ${name} — ${amount}`);
+      rememberSuggestion(name, state.category);
+      Object.keys(statsCache).forEach((k) => delete statsCache[k]);
+      $('amount').value = ''; $('name').value = ''; $('comment').value = '';
+      state.category = ''; state.catTouched = false;
+      renderCats(); renderSuggest();
+    } catch (e) {
+      haptic('error');
+      alertMsg(e.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function rememberSuggestion(name, category) {
+    const i = state.suggestions.findIndex((s) => s.name.toLowerCase() === name.toLowerCase());
+    if (i >= 0) state.suggestions.splice(i, 1);
+    state.suggestions.unshift({ name, category });
+  }
+
+  /* ===================== Аналитика ===================== */
+  const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const MONTHS_PREP = ['январе','феврале','марте','апреле','мае','июне','июле','августе','сентябре','октябре','ноябре','декабре'];
+  const CAT_EMOJI = {
+    'Еда':'🛒','Бензин/транспорт':'⛽','Машина':'🚗','Бытовые покупки':'🧺','Кредиты':'💳','ЖКХ':'🏠',
+    'Одежда':'👕','Здоровье':'💊','Кафе/кофейни':'☕','Развлечения':'🎬','Косметика':'💄','Десятина':'🕊',
+    'Конверты':'✉️','Прочие':'📦','Подарки':'🎁',
+  };
+  // Цвета людей (проверены на различимость, в т.ч. при дальтонизме) — светлая и тёмная тема
+  const PERSON_PALETTE = {
+    light: ['#2f7fd6', '#b0479f'],
+    dark:  ['#4a93e6', '#c75cb5'],
+  };
+  const statsCache = {};
+  let statsMonth = monthKey(new Date());
+  let tab = 'add';
+
+  function monthKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+  function shiftMonth(k, delta) {
+    let y = +k.slice(0, 4), m = +k.slice(5, 7) + delta;
+    while (m < 1) { m += 12; y--; }
+    while (m > 12) { m -= 12; y++; }
+    return y + '-' + String(m).padStart(2, '0');
+  }
+  function money(n) { return (Math.round(n * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 }); }
+  function esc(t) { return String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function plural(n, a, b, c) { const x = n % 10, y = n % 100; return x === 1 && y !== 11 ? a : x >= 2 && x <= 4 && (y < 12 || y > 14) ? b : c; }
+  function personColor(p) {
+    const pal = PERSON_PALETTE[tg && tg.colorScheme === 'dark' ? 'dark' : 'light'];
+    const i = people.indexOf(p);
+    return i >= 0 && i < pal.length ? pal[i] : '#9aa0a6';
+  }
+  function whoOrder(obj) {
+    return people.filter((p) => obj[p] != null).concat(Object.keys(obj).filter((p) => !people.includes(p)));
+  }
+  function stackBar(obj, widthPct) {
+    return `<div class="stack" style="width:${widthPct}%">` + whoOrder(obj)
+      .map((p) => `<i style="flex:${obj[p]};background:${personColor(p)}" title="${esc(p)}: ${money(obj[p])}"></i>`)
+      .join('') + '</div>';
+  }
+
+  function showTab(name) {
+    tab = name;
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+    $('form').hidden = name !== 'add';
+    $('stats').hidden = name !== 'stats';
+    if (inTelegram) name === 'add' ? tg.MainButton.show() : tg.MainButton.hide();
+    if (name === 'stats') loadStats();
+  }
+
+  async function loadStats() {
+    const k = statsMonth;
+    const mi = +k.slice(5, 7) - 1;
+    $('mLabel').textContent = MONTHS[mi] + ' ' + k.slice(0, 4);
+    $('mPick').value = k;
+    $('mNext').disabled = k >= monthKey(new Date());
+    if (statsCache[k]) { renderStats(statsCache[k]); return; }
+    $('statsBody').innerHTML = '<div class="empty">Считаю…</div>';
+    try {
+      const r = await api('stats', { month: k });
+      if (!r.ok) throw new Error(r.message || r.error || 'Не удалось загрузить');
+      statsCache[k] = r;
+      if (statsMonth === k) renderStats(r);
+    } catch (e) {
+      if (statsMonth === k) $('statsBody').innerHTML = `<div class="empty">Ошибка: ${esc(e.message || e)}</div>`;
+    }
+  }
+
+  function renderStats(s) {
+    const k = s.month;
+    const mi = +k.slice(5, 7) - 1;
+    const prevMi = (mi + 11) % 12;
+    if (!s.count) {
+      $('statsBody').innerHTML = `<div class="card empty">В ${MONTHS_PREP[mi]} расходов нет</div>`;
+      return;
+    }
+
+    // Итог
+    let sub = `${s.count} ${plural(s.count, 'запись', 'записи', 'записей')}`;
+    if (s.prevTotal > 0) {
+      if (k === monthKey(new Date())) {
+        sub += ` · в ${MONTHS_PREP[prevMi]} всего ${money(s.prevTotal)}`;
+      } else {
+        const d = Math.round((s.total - s.prevTotal) / s.prevTotal * 100);
+        sub += ` · ${d >= 0 ? '↑ на ' + d : '↓ на ' + (-d)}% к ${MONTHS_PREP[prevMi]}`;
+      }
+    }
+    let html = `<div class="card hero">
+      <div class="label">Всего за месяц</div>
+      <div class="num">${money(s.total)} <small>BYN</small></div>
+      <div class="sub">${sub}</div>
+    </div>`;
+
+    // Кто сколько
+    html += `<div class="card"><div class="label">Кто сколько потратил</div>${stackBar(s.byWho, 100)}`;
+    whoOrder(s.byWho).forEach((p) => {
+      html += `<div class="whoRow"><span class="dot" style="background:${personColor(p)}"></span>
+        <span>${esc(p)}</span><span class="v">${money(s.byWho[p])} BYN</span>
+        <span class="pct">${Math.round(s.byWho[p] / s.total * 100)}%</span></div>`;
+    });
+    html += '</div>';
+
+    // По категориям
+    const cats = Object.keys(s.byCat).sort((a, b) => s.byCat[b].total - s.byCat[a].total);
+    const max = s.byCat[cats[0]].total;
+    html += '<div class="card"><div class="label">По категориям · нажмите, чтобы раскрыть</div>';
+    cats.forEach((c, i) => {
+      const cat = s.byCat[c];
+      const who = whoOrder(cat.byWho).map((p) => `${esc(p)} <b>${money(cat.byWho[p])}</b>`).join(' · ');
+      const entries = (cat.entries || []).slice().sort((a, b) => b.date.split('.').reverse().join('').localeCompare(a.date.split('.').reverse().join('')));
+      html += `<div class="cat" data-i="${i}">
+        <div class="catHead"><span class="n">${CAT_EMOJI[c] || '▫️'} ${esc(c)}</span>
+          <span class="v">${money(cat.total)}</span><span class="pct">${Math.round(cat.total / s.total * 100)}%</span></div>
+        ${stackBar(cat.byWho, Math.max(2, cat.total / max * 100))}
+        <div class="catWho">${who}</div>
+        <div class="entries" hidden>${entries.map((e) => `<div class="entry">
+          <span class="d">${esc(e.date)}</span>
+          <span class="t">${esc(e.name)}<small>${esc(e.who)}${e.comment ? ' · ' + esc(e.comment) : ''}</small></span>
+          <span class="a">${money(e.amount)}</span></div>`).join('')}</div>
+      </div>`;
+    });
+    html += '</div>';
+    $('statsBody').innerHTML = html;
+    $('statsBody').querySelectorAll('.cat').forEach((el) => {
+      el.onclick = () => { tap(); const box = el.querySelector('.entries'); box.hidden = !box.hidden; };
+    });
+  }
+
+  function goMonth(k) {
+    if (!k || k > monthKey(new Date())) return;
+    tap();
+    statsMonth = k;
+    loadStats();
+  }
+
+  let toastTimer;
+  function showToast(text) {
+    const t = $('toast');
+    t.textContent = '✓ ' + text;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  function showDenied(html) {
+    $('loading').hidden = true;
+    $('denied').innerHTML = html;
+    $('denied').hidden = false;
+  }
+
+  async function init() {
+    if (tg) { tg.ready(); tg.expand(); }
+    if (!inTelegram) {
+      showDenied('<b>Откройте форму из Telegram</b>Через кнопку «💸 Расход» в боте.');
+      return;
+    }
+    try {
+      const cfg = await api('config');
+      if (!cfg.ok) {
+        if (cfg.error === 'not_allowed') {
+          showDenied(`<b>Нет доступа</b>Ваш Telegram ID: <code>${cfg.userId}</code><br><br>Добавьте его в свойство USERS в Apps Script.`);
+        } else {
+          showDenied(`<b>Ошибка</b>${cfg.error || 'не удалось загрузить настройки'}`);
+        }
+        return;
+      }
+      categories = cfg.categories || [];
+      people = cfg.people || [];
+      state.who = people.includes(cfg.me) ? cfg.me : (people[0] || '');
+      state.suggestions = cfg.suggestions || [];
+
+      $('date').value = todayISO();
+      renderCats(); renderPeople(); renderSuggest();
+
+      $('loading').hidden = true;
+      $('tabs').hidden = false;
+      $('form').hidden = false;
+
+      tg.MainButton.setText('Сохранить');
+      tg.MainButton.onClick(save);
+      tg.MainButton.show();
+      $('saveBtn').hidden = true;
+    } catch (e) {
+      showDenied(`<b>Нет связи с таблицей</b>${e.message || e}`);
+    }
+  }
+
+  document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => { tap(); showTab(b.dataset.tab); }));
+  $('mPrev').addEventListener('click', () => goMonth(shiftMonth(statsMonth, -1)));
+  $('mNext').addEventListener('click', () => goMonth(shiftMonth(statsMonth, 1)));
+  $('mPick').addEventListener('change', (e) => goMonth(e.target.value));
+
+  $('form').addEventListener('submit', (e) => { e.preventDefault(); save(); });
+  $('name').addEventListener('input', onNameChange);
+  $('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
+
+  init();
+</script>
+</body>
+</html>
