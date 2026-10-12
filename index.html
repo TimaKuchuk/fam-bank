@@ -76,9 +76,18 @@
   .day { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 4px 8px; }
   .day h3 { margin: 0; font-size: 19px; font-weight: 700; }
   .day span { color: var(--hint); font-size: 14px; }
-  .ops { background: var(--bg); border-radius: var(--radius); padding: 0 14px; }
-  .op { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
-  .op + .op { border-top: 1px solid var(--bg2); }
+  .ops { background: var(--bg); border-radius: var(--radius); overflow: hidden; }
+  .opw { position: relative; overflow: hidden; }
+  .opw + .opw { border-top: 1px solid var(--bg2); }
+  .opw .del { position: absolute; top: 0; right: 0; bottom: 0; width: 92px; border: 0; background: #e5484d; color: #fff;
+    font: 600 14px inherit; font-family: inherit; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 2px; visibility: hidden; }
+  .opw.sw .del { visibility: visible; }
+  .opw .del span { font-size: 18px; }
+  .op { position: relative; display: flex; align-items: center; gap: 12px; padding: 11px 14px; background: var(--bg);
+    touch-action: pan-y; transition: transform .2s ease; will-change: transform; }
+  .op.drag { transition: none; }
+  .opw.removing { transition: height .25s ease, opacity .2s; opacity: 0; }
   .op .ic { width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 20px; }
   .op .mid { flex: 1; min-width: 0; }
   .op .t { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -630,6 +639,7 @@
       return;
     }
 
+    listItems = [];
     let html = '', day = null, group = [];
     const flushDay = () => {
       if (!group.length) return;
@@ -638,18 +648,119 @@
         group.map((x) => {
           const [bg] = CAT_COLORS[x.cat] || FALLBACK;
           const sub = esc(x.cat) + (x.comment ? ' · ' + esc(x.comment) : '');
-          return `<div class="op${x.pending ? ' pending' : ''}">
+          const idx = listItems.push(x) - 1;
+          return `<div class="opw" data-idx="${idx}">
+            ${x.pending ? '' : '<button type="button" class="del"><span>🗑</span>Удалить</button>'}
+            <div class="op${x.pending ? ' pending' : ''}">
             <div class="ic" style="background:${bg}">${CAT_EMOJI[x.cat] || '▫️'}</div>
             <div class="mid"><div class="t">${esc(x.name)}</div><div class="s">${sub}</div></div>
             <div class="r"><div class="a">−${money(x.amount)} BYN</div>
               <div class="w">${x.pending ? '⏳ отправляется' : esc(x.who)}</div></div>
-          </div>`;
+          </div></div>`;
         }).join('') + '</div>';
       group = [];
     };
     items.forEach((x) => { if (x.ymd !== day) { flushDay(); day = x.ymd; } group.push(x); });
     flushDay();
     $('listItems').innerHTML = html;
+    $('listItems').querySelectorAll('.opw').forEach(bindSwipe);
+  }
+
+  /* ----- свайп влево → «Удалить» ----- */
+  let listItems = [];
+  let openRow = null;
+  const DEL_W = 92;
+
+  function setX(w, x) {
+    w.querySelector('.op').style.transform = x ? `translateX(${x}px)` : '';
+    clearTimeout(w._t);
+    if (x) w.classList.add('sw');
+    else w._t = setTimeout(() => w.classList.remove('sw'), 220); // спрятать кнопку после анимации
+  }
+  function closeOpen() { if (openRow) { setX(openRow, 0); openRow = null; } }
+  document.addEventListener('pointerdown', (e) => { if (openRow && !openRow.contains(e.target)) closeOpen(); });
+
+  function bindSwipe(w) {
+    const op = w.querySelector('.op');
+    const btn = w.querySelector('.del');
+    if (!btn) return; // неотправленные записи удалять нельзя
+    let x0 = 0, y0 = 0, base = 0, dx = 0, mode = null, dragged = false;
+
+    op.addEventListener('pointerdown', (e) => {
+      x0 = e.clientX; y0 = e.clientY; dx = 0; mode = null; dragged = false;
+      base = openRow === w ? -DEL_W : 0;
+    });
+    op.addEventListener('pointermove', (e) => {
+      if (e.buttons === 0 && e.pointerType === 'mouse') return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (!mode) {
+        if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        mode = Math.abs(mx) > Math.abs(my) ? 'h' : 'v';
+        if (mode === 'h') { dragged = true; op.classList.add('drag'); try { op.setPointerCapture(e.pointerId); } catch (_) {} if (openRow && openRow !== w) closeOpen(); }
+      }
+      if (mode !== 'h') return;
+      dx = Math.min(0, Math.max(-DEL_W * 1.4, base + mx));
+      setX(w, dx);
+    });
+    const end = () => {
+      op.classList.remove('drag');
+      if (mode !== 'h') return;
+      if (dx < -DEL_W / 2) { setX(w, -DEL_W); if (openRow !== w) tap(); openRow = w; }
+      else { setX(w, 0); if (openRow === w) openRow = null; }
+      mode = null;
+    };
+    op.addEventListener('pointerup', end);
+    op.addEventListener('pointercancel', end);
+    // клик после свайпа игнорируем; обычный тап по открытой строке — закрывает её
+    op.addEventListener('click', () => { if (dragged) { dragged = false; return; } if (openRow === w) closeOpen(); });
+    btn.addEventListener('click', () => askDelete(w, listItems[+w.dataset.idx]));
+  }
+
+  function confirmBox(text) {
+    return new Promise((res) => {
+      try { if (inTelegram && tg.showConfirm) return tg.showConfirm(text, (ok) => res(!!ok)); } catch (e) {}
+      res(window.confirm(text));
+    });
+  }
+
+  async function askDelete(w, x) {
+    if (!x) return;
+    const ok = await confirmBox(`Удалить «${x.name}» — ${money(x.amount)} BYN (${x.who}, ${dayTitle(x.ymd).toLowerCase()})?`);
+    if (!ok) { closeOpen(); return; }
+    haptic('warning');
+    openRow = null;
+    // сразу убираем из списка и из аналитики, сервер — в фоне
+    w.style.height = w.offsetHeight + 'px';
+    requestAnimationFrame(() => { w.classList.add('removing'); w.style.height = '0px'; });
+    const k = x.ymd.slice(0, 7);
+    const s = statsCache[k] || LS.get('stats:' + k, null);
+    if (s) { removeFromStats(s, x); statsCache[k] = s; LS.set('stats:' + k, s); }
+    setTimeout(() => { if (statsMonth === k && tab !== 'add' && s) renderCurrent(s); }, 260);
+    try {
+      const r = await api('delete', { item: { row: x.row, ymd: x.ymd, who: x.who, name: x.name, amount: x.amount } });
+      if (!r.ok) throw new Error(r.message || r.error || 'Не удалось удалить');
+      showToast(`Удалено: ${x.name} — ${money(x.amount)}`);
+    } catch (e) {
+      haptic('error');
+      alertMsg('Не удалилось: ' + (e.message || e));
+    }
+    markStatsStale(); // подтянуть точные данные с сервера
+  }
+
+  function removeFromStats(s, x) {
+    const c = s.byCat && s.byCat[x.cat];
+    if (!c) return;
+    const i = (c.entries || []).findIndex((e) => e.name === x.name && e.who === x.who &&
+      Math.abs(e.amount - x.amount) < 0.005 && (e.ymd || '') === x.ymd);
+    if (i < 0) return;
+    c.entries.splice(i, 1);
+    c.total -= x.amount;
+    c.byWho[x.who] = (c.byWho[x.who] || 0) - x.amount;
+    if (c.byWho[x.who] <= 0.004) delete c.byWho[x.who];
+    s.total -= x.amount; s.count -= 1;
+    s.byWho[x.who] = (s.byWho[x.who] || 0) - x.amount;
+    if (s.byWho[x.who] <= 0.004) delete s.byWho[x.who];
+    if (!c.entries.length && c.total <= 0.004) delete s.byCat[x.cat];
   }
 
   function goMonth(k) {
