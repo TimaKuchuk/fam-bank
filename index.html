@@ -96,6 +96,18 @@
   .op .a { color: var(--danger); font-weight: 600; font-size: 16px; white-space: nowrap; }
   .op .w { color: var(--hint); font-size: 13px; margin-top: 2px; }
   .op.pending { opacity: .55; }
+  /* сбережения */
+  :root { --save: #16804a; }
+  #savBlock { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--bg2); }
+  .hero2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .hero2 .num { font-size: 28px; }
+  .hero2 .save .num { color: var(--save); }
+  .hero2 .save .label { color: var(--save); }
+  .saveCard { box-shadow: inset 4px 0 0 var(--save); }
+  .saveCard .bigsave { font-size: 26px; font-weight: 800; color: var(--save); margin: 2px 0 10px; }
+  .saveCard .bigsave small { font-size: 16px; color: var(--hint); font-weight: 600; }
+  .op .a.save { color: var(--save); }
+  .day span .sv { color: var(--save); }
   .empty { text-align: center; color: var(--hint); padding: 40px 10px; }
 
   .card { background: var(--bg); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
@@ -183,6 +195,10 @@
     <div class="card">
       <div class="label">Категория</div>
       <div id="cats" class="chips"></div>
+      <div id="savBlock">
+        <div class="label sv-label">🏦 Сбережения</div>
+        <div id="cats2" class="chips"></div>
+      </div>
     </div>
 
     <div class="row2">
@@ -228,12 +244,18 @@
     'Конверты':         ['#11734b', '#d4edbc'],
     'Прочие':           ['#e6cff2', '#5a3286'],
     'Подарки':          ['#3ee8b0', '#0b4d3a'],
-    'Стоматология':     ['#ffb27a', '#7a2e00']
+    'Стоматология':     ['#ffb27a', '#7a2e00'],
+    'Развитие/хобби':   ['#c026d3', '#fdf4ff'],
+    'Квартира':         ['#2f3e46', '#e9f5f2'],
   };
+  // Сбережения — не расходы. Список приходит с сервера (CONFIG.SAVINGS_CATEGORIES)
+  let savingsCats = ['Конверты', 'Квартира'];
+  const isSave = (c) => savingsCats.includes(c);
   const PEOPLE_COLORS = { 'Тима': ['#bfe1f6', '#0a53a8'], 'Ульяна': ['#e6cff2', '#5a3286'] };
   const FALLBACK = ['#e8eaed', '#3c4043'];
 
   const tg = window.Telegram && Telegram.WebApp;
+  if (tg && tg.colorScheme === 'dark') document.documentElement.style.setProperty('--save', '#3ecf8e');
   const inTelegram = !!(tg && tg.initData);
   const $ = (id) => document.getElementById(id);
 
@@ -284,11 +306,15 @@
 
   let categories = [], people = [];
   function renderCats() {
-    renderChips($('cats'), categories, CAT_COLORS, state.category, (c) => {
+    const pick = (c) => {
       state.category = state.category === c ? '' : c;
       state.catTouched = !!state.category;
       renderCats();
-    });
+    };
+    const sav = categories.filter(isSave);
+    renderChips($('cats'), categories.filter((c) => !isSave(c)), CAT_COLORS, state.category, pick);
+    renderChips($('cats2'), sav, CAT_COLORS, state.category, pick);
+    $('savBlock').hidden = !sav.length;
   }
   function renderPeople() {
     renderChips($('people'), people, PEOPLE_COLORS, state.who, (p) => { state.who = p; renderPeople(); });
@@ -441,7 +467,7 @@
   const CAT_EMOJI = {
     'Еда':'🛒','Бензин/транспорт':'⛽','Машина':'🚗','Бытовые покупки':'🧺','Кредиты':'💳','ЖКХ':'🏠',
     'Одежда':'👕','Здоровье':'💊','Кафе/кофейни':'☕','Развлечения':'🎬','Косметика':'💄','Десятина':'🕊',
-    'Конверты':'✉️','Прочие':'📦','Подарки':'🎁','Стоматология':'🦷',
+    'Конверты':'✉️','Прочие':'📦','Подарки':'🎁','Стоматология':'🦷','Квартира':'🏗','Развитие/хобби':'🎨',
   };
   // Цвета людей (проверены на различимость, в т.ч. при дальтонизме) — светлая и тёмная тема
   const PERSON_PALETTE = {
@@ -522,68 +548,92 @@
     }
   }
 
+  // Одна категория с разбивкой по людям (и лимитами), раскрывается списком записей
+  function catHtml(c, cat, base, max, limits) {
+    const lim = (limits || {})[c] || {};
+    const whoList = whoOrder(Object.assign({}, lim, cat.byWho));
+    let anyOver = false;
+    const who = whoList.map((p) => {
+      const v = cat.byWho[p] || 0, l = lim[p];
+      const over = l > 0 && v >= l;
+      if (over) anyOver = true;
+      return `${esc(p)} <b class="${over ? 'over' : ''}">${money(v)}</b>` + (l > 0 ? `<span class="lim"> / ${money(l)}</span>` : '');
+    }).join(' · ');
+    const entries = (cat.entries || []).slice().sort((a, b) => b.date.split('.').reverse().join('').localeCompare(a.date.split('.').reverse().join('')));
+    return `<div class="cat">
+      <div class="catHead"><span class="n">${CAT_EMOJI[c] || '▫️'} ${esc(c)}</span>
+        <span class="v${anyOver ? ' over' : ''}">${money(cat.total)}</span><span class="pct">${base ? Math.round(cat.total / base * 100) : 0}%</span></div>
+      ${stackBar(cat.byWho, Math.max(2, cat.total / max * 100))}
+      <div class="catWho">${who}</div>
+      <div class="entries" hidden>${entries.map((e) => `<div class="entry">
+        <span class="d">${esc(e.date)}</span>
+        <span class="t">${esc(e.name)}<small>${esc(e.who)}${e.comment ? ' · ' + esc(e.comment) : ''}</small></span>
+        <span class="a">${money(e.amount)}</span></div>`).join('')}</div>
+    </div>`;
+  }
+
   function renderStats(s) {
     const k = s.month;
     const mi = +k.slice(5, 7) - 1;
     const prevMi = (mi + 11) % 12;
-    if (!s.count) {
-      $('statsBody').innerHTML = `<div class="card empty">В ${MONTHS_PREP[mi]} расходов нет</div>`;
+    const sv = s.savings || { total: 0, count: 0, byWho: {}, byCat: {} };
+    if (!s.count && !sv.count) {
+      $('statsBody').innerHTML = `<div class="card empty">В ${MONTHS_PREP[mi]} записей нет</div>`;
       return;
     }
 
-    // Итог
-    let sub = `${s.count} ${plural(s.count, 'запись', 'записи', 'записей')}`;
+    // Итог: потрачено | отложено
+    let sub = `${s.count} ${plural(s.count, 'расход', 'расхода', 'расходов')}`;
     if (s.prevTotal > 0) {
       if (k === monthKey(new Date())) {
-        sub += ` · в ${MONTHS_PREP[prevMi]} всего ${money(s.prevTotal)}`;
+        sub += ` · в ${MONTHS_PREP[prevMi]} потрачено ${money(s.prevTotal)}`;
       } else {
         const d = Math.round((s.total - s.prevTotal) / s.prevTotal * 100);
         sub += ` · ${d >= 0 ? '↑ на ' + d : '↓ на ' + (-d)}% к ${MONTHS_PREP[prevMi]}`;
       }
     }
     let html = `<div class="card hero">
-      <div class="label">Всего за месяц</div>
-      <div class="num">${money(s.total)} <small>BYN</small></div>
+      <div class="hero2">
+        <div><div class="label">💸 Потрачено</div><div class="num">${money(s.total)} <small>BYN</small></div></div>
+        <div class="save"><div class="label">🏦 Отложено</div><div class="num">${money(sv.total)} <small>BYN</small></div></div>
+      </div>
       <div class="sub">${sub}</div>
     </div>`;
 
-    // Кто сколько
-    html += `<div class="card"><div class="label">Кто сколько потратил</div>${stackBar(s.byWho, 100)}`;
-    whoOrder(s.byWho).forEach((p) => {
-      html += `<div class="whoRow"><span class="dot" style="background:${personColor(p)}"></span>
-        <span>${esc(p)}</span><span class="v">${money(s.byWho[p])} BYN</span>
-        <span class="pct">${Math.round(s.byWho[p] / s.total * 100)}%</span></div>`;
-    });
-    html += '</div>';
+    if (s.count) {
+      // Кто сколько потратил
+      html += `<div class="card"><div class="label">Кто сколько потратил</div>${stackBar(s.byWho, 100)}`;
+      whoOrder(s.byWho).forEach((p) => {
+        html += `<div class="whoRow"><span class="dot" style="background:${personColor(p)}"></span>
+          <span>${esc(p)}</span><span class="v">${money(s.byWho[p])} BYN</span>
+          <span class="pct">${Math.round(s.byWho[p] / s.total * 100)}%</span></div>`;
+      });
+      html += '</div>';
 
-    // По категориям
-    const cats = Object.keys(s.byCat).sort((a, b) => s.byCat[b].total - s.byCat[a].total);
-    const max = s.byCat[cats[0]].total;
-    html += '<div class="card"><div class="label">По категориям · нажмите, чтобы раскрыть</div>';
-    cats.forEach((c, i) => {
-      const cat = s.byCat[c];
-      const lim = (s.limits || {})[c] || {};
-      const whoList = whoOrder(Object.assign({}, lim, cat.byWho));
-      let anyOver = false;
-      const who = whoList.map((p) => {
-        const v = cat.byWho[p] || 0, l = lim[p];
-        const over = l > 0 && v >= l;
-        if (over) anyOver = true;
-        return `${esc(p)} <b class="${over ? 'over' : ''}">${money(v)}</b>` + (l > 0 ? `<span class="lim"> / ${money(l)}</span>` : '');
-      }).join(' · ');
-      const entries = (cat.entries || []).slice().sort((a, b) => b.date.split('.').reverse().join('').localeCompare(a.date.split('.').reverse().join('')));
-      html += `<div class="cat" data-i="${i}">
-        <div class="catHead"><span class="n">${CAT_EMOJI[c] || '▫️'} ${esc(c)}</span>
-          <span class="v${anyOver ? ' over' : ''}">${money(cat.total)}</span><span class="pct">${Math.round(cat.total / s.total * 100)}%</span></div>
-        ${stackBar(cat.byWho, Math.max(2, cat.total / max * 100))}
-        <div class="catWho">${who}</div>
-        <div class="entries" hidden>${entries.map((e) => `<div class="entry">
-          <span class="d">${esc(e.date)}</span>
-          <span class="t">${esc(e.name)}<small>${esc(e.who)}${e.comment ? ' · ' + esc(e.comment) : ''}</small></span>
-          <span class="a">${money(e.amount)}</span></div>`).join('')}</div>
-      </div>`;
-    });
-    html += '</div>';
+      // Расходы по категориям
+      const cats = Object.keys(s.byCat).sort((a, b) => s.byCat[b].total - s.byCat[a].total);
+      const max = s.byCat[cats[0]].total;
+      html += '<div class="card"><div class="label">Расходы по категориям · нажмите, чтобы раскрыть</div>';
+      cats.forEach((c) => { html += catHtml(c, s.byCat[c], s.total, max, s.limits); });
+      html += '</div>';
+    }
+
+    if (sv.count) {
+      // Сбережения — отдельная карточка
+      html += `<div class="card saveCard"><div class="label">🏦 Сбережения за месяц</div>
+        <div class="bigsave">${money(sv.total)} <small>BYN</small></div>${stackBar(sv.byWho, 100)}`;
+      whoOrder(sv.byWho).forEach((p) => {
+        html += `<div class="whoRow"><span class="dot" style="background:${personColor(p)}"></span>
+          <span>${esc(p)}</span><span class="v">${money(sv.byWho[p])} BYN</span>
+          <span class="pct">${Math.round(sv.byWho[p] / sv.total * 100)}%</span></div>`;
+      });
+      const scats = Object.keys(sv.byCat).sort((a, b) => sv.byCat[b].total - sv.byCat[a].total);
+      const smax = sv.byCat[scats[0]].total;
+      html += '<div style="height:10px"></div>';
+      scats.forEach((c) => { html += catHtml(c, sv.byCat[c], sv.total, smax, s.limits); });
+      html += '</div>';
+    }
+
     $('statsBody').innerHTML = html;
     $('statsBody').querySelectorAll('.cat').forEach((el) => {
       el.onclick = () => { tap(); const box = el.querySelector('.entries'); box.hidden = !box.hidden; };
@@ -620,10 +670,11 @@
     const k = s.month;
     // все записи месяца из аналитики
     let items = [];
-    Object.keys(s.byCat || {}).forEach((cat) => (s.byCat[cat].entries || []).forEach((e) => {
-      const ymd = e.ymd || (k + '-' + e.date.slice(0, 2));
-      items.push({ cat, who: e.who, name: e.name, amount: e.amount, comment: e.comment, ymd, row: e.row || 0 });
-    }));
+    [s.byCat || {}, (s.savings && s.savings.byCat) || {}].forEach((byCat) =>
+      Object.keys(byCat).forEach((cat) => (byCat[cat].entries || []).forEach((e) => {
+        const ymd = e.ymd || (k + '-' + e.date.slice(0, 2));
+        items.push({ cat, who: e.who, name: e.name, amount: e.amount, comment: e.comment, ymd, row: e.row || 0 });
+      })));
     // ещё не отправленные — тоже показываем, полупрозрачными
     outbox.forEach((x, i) => {
       const ymd = x.date || todayISO();
@@ -635,7 +686,7 @@
 
     const mi = +k.slice(5, 7) - 1;
     if (!items.length) {
-      $('listItems').innerHTML = `<div class="card empty">В ${MONTHS_PREP[mi]} расходов ${whoFilter ? 'у ' + esc(whoFilter) + ' ' : ''}нет</div>`;
+      $('listItems').innerHTML = `<div class="card empty">В ${MONTHS_PREP[mi]} записей ${whoFilter ? 'у ' + esc(whoFilter) + ' ' : ''}нет</div>`;
       return;
     }
 
@@ -643,18 +694,21 @@
     let html = '', day = null, group = [];
     const flushDay = () => {
       if (!group.length) return;
-      const sum = group.reduce((a, x) => a + x.amount, 0);
-      html += `<div class="day"><h3>${dayTitle(day)}</h3><span>−${money(sum)} BYN</span></div><div class="ops">` +
+      const spent = group.filter((x) => !isSave(x.cat)).reduce((a, x) => a + x.amount, 0);
+      const saved = group.filter((x) => isSave(x.cat)).reduce((a, x) => a + x.amount, 0);
+      const head = [spent ? `−${money(spent)} BYN` : '', saved ? `<b class="sv">🏦 ${money(saved)}</b>` : ''].filter(Boolean).join(' · ');
+      html += `<div class="day"><h3>${dayTitle(day)}</h3><span>${head}</span></div><div class="ops">` +
         group.map((x) => {
           const [bg] = CAT_COLORS[x.cat] || FALLBACK;
-          const sub = esc(x.cat) + (x.comment ? ' · ' + esc(x.comment) : '');
+          const save = isSave(x.cat);
+          const sub = (save ? '🏦 Сбережения · ' : '') + esc(x.cat) + (x.comment ? ' · ' + esc(x.comment) : '');
           const idx = listItems.push(x) - 1;
           return `<div class="opw" data-idx="${idx}">
             ${x.pending ? '' : '<button type="button" class="del"><span>🗑</span>Удалить</button>'}
             <div class="op${x.pending ? ' pending' : ''}">
             <div class="ic" style="background:${bg}">${CAT_EMOJI[x.cat] || '▫️'}</div>
             <div class="mid"><div class="t">${esc(x.name)}</div><div class="s">${sub}</div></div>
-            <div class="r"><div class="a">−${money(x.amount)} BYN</div>
+            <div class="r"><div class="a${save ? ' save' : ''}">${save ? '' : '−'}${money(x.amount)} BYN</div>
               <div class="w">${x.pending ? '⏳ отправляется' : esc(x.who)}</div></div>
           </div></div>`;
         }).join('') + '</div>';
@@ -747,9 +801,10 @@
     markStatsStale(); // подтянуть точные данные с сервера
   }
 
-  function removeFromStats(s, x) {
-    const c = s.byCat && s.byCat[x.cat];
-    if (!c) return;
+  function removeFromStats(s0, x) {
+    const s = (s0.byCat && s0.byCat[x.cat]) ? s0 : (s0.savings && s0.savings.byCat && s0.savings.byCat[x.cat]) ? s0.savings : null;
+    if (!s) return;
+    const c = s.byCat[x.cat];
     const i = (c.entries || []).findIndex((e) => e.name === x.name && e.who === x.who &&
       Math.abs(e.amount - x.amount) < 0.005 && (e.ymd || '') === x.ymd);
     if (i < 0) return;
@@ -788,6 +843,7 @@
   let started = false;
   function applyConfig(cfg) {
     categories = cfg.categories || [];
+    if (Array.isArray(cfg.savings) && cfg.savings.length) savingsCats = cfg.savings;
     people = cfg.people || [];
     if (!started || !people.includes(state.who)) state.who = people.includes(cfg.me) ? cfg.me : (people[0] || '');
     // подсказки с сервера + свои последние, которые ещё не дошли до сервера
